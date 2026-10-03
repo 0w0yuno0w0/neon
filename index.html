@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FFXIV Neon Character Card Lab</title>
+<style>
+:root{
+  --bg:#070914; --panel:#0d1122; --line:#24304d; --text:#eaf1ff; --muted:#8d9ab8;
+  --cyan:#31e7ff; --mag:#ff35df; --vio:#9b6cff; --accent:#31e7ff;
+}
+*{box-sizing:border-box}
+body{margin:0;background:
+ radial-gradient(circle at 20% 0%,rgba(49,231,255,.07),transparent 30%),
+ radial-gradient(circle at 80% 10%,rgba(255,53,223,.06),transparent 30%),
+ #070914;color:var(--text);font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+.app{display:grid;grid-template-columns:360px 1fr;min-height:100vh}
+.sidebar{padding:22px;border-right:1px solid #1a2140;background:linear-gradient(180deg,#0a0e1b,#080b15)}
+.brand{font-weight:800;letter-spacing:.12em;font-size:18px}.brand span{color:var(--cyan)}
+.sub{font-size:11px;color:var(--muted);margin:6px 0 18px;letter-spacing:.08em}
+section{border:1px solid #1a2140;background:rgba(13,17,34,.72);border-radius:14px;padding:14px;margin:0 0 12px}
+h3{margin:0 0 10px;font-size:12px;letter-spacing:.12em;color:#dce6ff}
+label{display:block;font-size:10px;color:var(--muted);margin:8px 0 5px;letter-spacing:.08em}
+input,select{width:100%;padding:9px 10px;background:#090d1b;border:1px solid #253052;color:#fff;border-radius:9px;outline:none}
+input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(49,231,255,.12)}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.filebox{border:1px dashed #354064;border-radius:10px;padding:12px;text-align:center;font-size:11px;color:#9eabc8}
+button{cursor:pointer;border:1px solid #2d3961;border-radius:9px;background:#10162a;color:#eef5ff;padding:9px 11px;font-weight:650}
+button:hover{border-color:var(--accent);box-shadow:0 0 18px rgba(49,231,255,.12)}
+.primary{background:linear-gradient(135deg,rgba(49,231,255,.14),rgba(155,108,255,.13));border-color:#406083}
+.grid4{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.mode.active{border-color:var(--accent);color:#fff;box-shadow:inset 0 0 0 1px rgba(49,231,255,.24),0 0 18px rgba(49,231,255,.08)}
+.tiny{font-size:10px;color:var(--muted);line-height:1.55}
+.main{padding:22px;display:flex;flex-direction:column;gap:14px}
+.toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.title{font-size:18px;font-weight:800;letter-spacing:.06em}.title small{font-size:11px;color:var(--muted);display:block;margin-top:4px;font-weight:500}
+.actions{display:flex;gap:8px}
+.stage{min-height:0;display:flex;align-items:center;justify-content:center;background:
+ linear-gradient(90deg,rgba(255,255,255,.018) 1px,transparent 1px),
+ linear-gradient(rgba(255,255,255,.018) 1px,transparent 1px);
+background-size:28px 28px;border:1px solid #151c37;border-radius:16px;padding:20px;overflow:auto}
+.canvasWrap{position:relative;max-height:78vh}.canvasWrap canvas{display:block;max-height:76vh;width:auto;height:auto;box-shadow:0 0 55px rgba(49,231,255,.10),0 0 90px rgba(255,53,223,.07);border-radius:8px}
+.status{font-size:10px;color:#8090b1}
+.rangeRow{display:grid;grid-template-columns:1fr 58px;gap:8px;align-items:center}.rangeRow output{font-size:10px;color:#d5def4;text-align:right}
+.colorgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.colorgrid input{padding:3px;height:36px}
+.legend{display:flex;gap:8px;font-size:9px;color:#8592af;align-items:center}.dot{width:8px;height:8px;border-radius:50%}
+.cutoutBtn{width:100%;position:relative;overflow:hidden}.cutoutBtn.loading{opacity:.72;pointer-events:none}.progress{height:3px;background:#12182c;border-radius:2px;overflow:hidden;margin-top:8px}.progress>i{display:block;width:0;height:100%;background:linear-gradient(90deg,var(--cyan),var(--mag));box-shadow:0 0 12px var(--cyan);transition:width .2s}.checkline{display:flex;align-items:center;gap:7px;font-size:10px;color:#aab7d1;margin-top:9px}.checkline input{width:auto}.smallbtn{padding:7px 8px;font-size:10px}.license{font-size:9px;line-height:1.5;color:#6f7d9e;margin-top:8px}
+@media(max-width:980px){.app{grid-template-columns:1fr}.sidebar{border-right:0;border-bottom:1px solid #1a2140}.main{min-height:70vh}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">FFXIV <span>NEON</span> LAB</div>
+    <div class="sub">CHARACTER CARD GENERATOR / OFFLINE</div>
+
+    <section>
+      <h3>1. SS SOURCE</h3>
+      <div class="filebox" id="fileLabel">PNG / JPG / WEBP を選択</div>
+      <input id="imageInput" type="file" accept="image/*" hidden>
+      <button class="primary" style="width:100%;margin-top:8px" onclick="imageInput.click()">SSをアップロード</button>
+      <div class="tiny" style="margin-top:8px">画像はブラウザ内だけで処理します。サーバー送信は行いません。</div>
+    </section>
+
+    <section>
+      <h3>2. BACKGROUND REMOVAL / IMG.LY</h3>
+      <button id="cutoutBtn" class="primary cutoutBtn" onclick="runBackgroundRemoval()">人物を切り抜く</button>
+      <div class="progress"><i id="cutoutProgress"></i></div>
+      <label>NEON EDGE</label>
+      <div class="row">
+        <div><label style="margin-top:0">WIDTH</label><input id="edgeWidth" type="range" min="3" max="30" value="11"></div>
+        <div><label style="margin-top:0">NOISE</label><input id="edgeNoise" type="range" min="0" max="100" value="68"></div>
+      </div>
+      <label>GLITCH OFFSET</label><input id="glitchAmt" type="range" min="0" max="40" value="16">
+      <label class="checkline"><input id="showCutout" type="checkbox" checked> 切り抜きキャラを前面表示</label>
+      <div class="tiny" style="margin-top:8px">5番のように、人物の輪郭をシアン／マゼンタの発光フチへ変換し、横方向の粒・断片・RGBずれを加えます。</div>
+      <div class="license">Background removal: img.ly @imgly/background-removal (AGPL-3.0). ブラウザ実行時にCDNから読み込みます。</div>
+    </section>
+
+    <section>
+      <h3>3. CARD MODE</h3>
+      <div class="grid4">
+        <button class="mode active" data-mode="trace">01 TRACE</button>
+        <button class="mode" data-mode="orbit">04 ORBIT</button>
+        <button class="mode" data-mode="glitch">05 GLITCH</button>
+        <button class="mode" data-mode="cutaway">07 CUTAWAY</button>
+      </div>
+    </section>
+
+    <section>
+      <h3>4. CHARACTER DATA</h3>
+      <div class="row">
+        <div><label>NAME</label><input id="name" value="LUSIAN"></div>
+        <div><label>LEVEL</label><input id="level" value="90"></div>
+      </div>
+      <div class="row">
+        <div><label>RACE</label><input id="race" value="Miqo'te"></div>
+        <div><label>JOB</label><input id="job" value="Dark Knight"></div>
+      </div>
+      <div class="row">
+        <div><label>WORLD</label><input id="world" value="Meteor"></div>
+        <div><label>FC / GROUP</label><input id="fc" value="Moonlit"></div>
+      </div>
+      <label>STYLE</label><input id="style" value="Elegant / Cool / Mysterious">
+      <label>TAGLINE</label><input id="tagline" value="The night is my ally.">
+    </section>
+
+    <section>
+      <h3>5. IMAGE CONTROL</h3>
+      <div class="rangeRow"><label style="margin:0">ZOOM</label><output id="zoomOut">100%</output></div>
+      <input id="zoom" type="range" min="60" max="180" value="100">
+      <div class="row">
+        <div><label>X</label><input id="posX" type="range" min="-300" max="300" value="0"></div>
+        <div><label>Y</label><input id="posY" type="range" min="-300" max="300" value="0"></div>
+      </div>
+      <button onclick="resetView()" style="width:100%;margin-top:8px">位置をリセット</button>
+    </section>
+
+    <section>
+      <h3>6. NEON PALETTE</h3>
+      <div class="colorgrid">
+        <input id="c1" type="color" value="#31e7ff" title="Cyan">
+        <input id="c2" type="color" value="#ff35df" title="Magenta">
+      </div>
+      <div class="legend" style="margin-top:8px"><span class="dot" id="d1"></span> PRIMARY <span class="dot" id="d2"></span> SECONDARY</div>
+    </section>
+
+    <section>
+      <h3>EXPORT</h3>
+      <button class="primary" style="width:100%" onclick="exportPNG()">PNGを書き出す</button>
+      <div class="tiny" style="margin-top:7px">1200 × 1700 px。SNS投稿用の縦型カード。</div>
+    </section>
+  </aside>
+
+  <main class="main">
+    <div class="toolbar">
+      <div class="title" id="modeTitle">01 / NEON TRACE<small>キャラクターの輪郭がUIになる</small></div>
+      <div class="actions"><button onclick="randomizeNeon()">NEON SHIFT</button></div>
+    </div>
+    <div class="stage"><div class="canvasWrap"><canvas id="card" width="1200" height="1700"></canvas></div></div>
+    <div class="status" id="status">NO IMAGE — サンプル表示中</div>
+  </main>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const canvas = $('card'), ctx = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height;
+let img = new Image(), hasImage=false, mode='trace';
+let cutoutImg = new Image(), hasCutout=false, cutoutObjectURL=null, bgRemovalModule=null;
+let edgeCacheKey='', edgeCacheCanvas=null;
+
+const data = {};
+['name','level','race','job','world','fc','style','tagline'].forEach(id=>{
+  data[id] = $(id);
+  data[id].addEventListener('input', render);
+});
+['zoom','posX','posY','edgeWidth','edgeNoise','glitchAmt'].forEach(id=>$(id).addEventListener('input', ()=>{updateRange();edgeCacheKey='';render()}));
+$('showCutout').addEventListener('change', render);
+$('c1').addEventListener('input', ()=>{edgeCacheKey='';render()}); $('c2').addEventListener('input', ()=>{edgeCacheKey='';render()});
+$('d1').style.background=$('c1').value; $('d2').style.background=$('c2').value;
+
+document.querySelectorAll('.mode').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('.mode').forEach(x=>x.classList.remove('active'));
+  b.classList.add('active'); mode=b.dataset.mode;
+  const names={trace:['01 / NEON TRACE','キャラクターの輪郭がUIになる'],orbit:['04 / NEON ORBIT','キャラクターの周囲に情報が巡る'],glitch:['05 / NEON GLITCH PORTRAIT','ネオンとグリッチで再構成'],cutaway:['07 / NEON CUTAWAY','キャラクターの分解図・標本']};
+  $('modeTitle').innerHTML=names[mode][0]+'<small>'+names[mode][1]+'</small>';
+  render();
+}));
+
+$('imageInput').addEventListener('change',e=>{
+  const f=e.target.files?.[0]; if(!f) return;
+  const r=new FileReader();
+  r.onload=ev=>{
+    img.onload=()=>{hasImage=true;hasCutout=false;edgeCacheKey='';$('fileLabel').textContent=f.name;$('status').textContent=`IMAGE READY — ${img.naturalWidth} × ${img.naturalHeight}px`;render()};
+    img.src=ev.target.result;
+  };
+  r.readAsDataURL(f);
+});
+
+function updateRange(){ $('zoomOut').value = $('zoom').value+'%'; $('d1').style.background=$('c1').value; $('d2').style.background=$('c2').value; }
+function resetView(){ $('zoom').value=100;$('posX').value=0;$('posY').value=0;updateRange();render(); }
+function randomizeNeon(){
+  const palettes=[['#31e7ff','#ff35df'],['#8b5cf6','#22d3ee'],['#ff2da6','#7c3aed'],['#27f0b4','#b54cff'],['#00f0ff','#ffd166']];
+  const p=palettes[Math.floor(Math.random()*palettes.length)];
+  $('c1').value=p[0];$('c2').value=p[1];render();
+}
+
+function hexToRgb(hex){const n=parseInt(hex.slice(1),16);return {r:(n>>16)&255,g:(n>>8)&255,b:n&255}}
+function hexA(hex,a=.8){const c=hexToRgb(hex);return `rgba(${c.r},${c.g},${c.b},${a})`}
+function panel(x,y,w,h,stroke='rgba(49,231,255,.55)',fill='rgba(7,10,23,.66)',r=10){
+  ctx.save();ctx.fillStyle=fill;ctx.strokeStyle=stroke;ctx.lineWidth=2;
+  roundedRect(x,y,w,h,r);ctx.fill();ctx.stroke();ctx.restore()
+}
+function roundedRect(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath()}
+function text(t,x,y,size=28,weight=500,color='#edf4ff',align='left',family='Inter'){
+  ctx.save();ctx.fillStyle=color;ctx.font=`${weight} ${size}px ${family}`;ctx.textAlign=align;ctx.textBaseline='middle';ctx.fillText(t,x,y);ctx.restore()
+}
+function line(x1,y1,x2,y2,color='#31e7ff',w=2,a=1){ctx.save();ctx.strokeStyle=hexA(color,a);ctx.lineWidth=w;ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();ctx.restore()}
+function glowLine(points,color,w=7){
+  ctx.save();ctx.lineCap='round';ctx.lineJoin='round';
+  ctx.shadowBlur=28;ctx.shadowColor=color;ctx.strokeStyle=color;ctx.lineWidth=w;
+  ctx.beginPath();ctx.moveTo(points[0][0],points[0][1]);for(let i=1;i<points.length;i++)ctx.lineTo(points[i][0],points[i][1]);ctx.stroke();
+  ctx.shadowBlur=0;ctx.strokeStyle='#ffffff';ctx.lineWidth=1.2;ctx.stroke();ctx.restore();
+}
+function bg(){
+  ctx.fillStyle='#050711';ctx.fillRect(0,0,W,H);
+  const c1=$('c1').value,c2=$('c2').value;
+  let g=ctx.createRadialGradient(180,100,0,180,100,760);g.addColorStop(0,hexA(c1,.13));g.addColorStop(1,'rgba(0,0,0,0)');ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  g=ctx.createRadialGradient(1060,320,0,1060,320,650);g.addColorStop(0,hexA(c2,.10));g.addColorStop(1,'rgba(0,0,0,0)');ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='rgba(100,120,180,.04)';ctx.lineWidth=1;
+  for(let x=0;x<W;x+=28){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke()}
+  for(let y=0;y<H;y+=28){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke()}
+}
+function getImagePlacement(x,y,w,h,zoomOverride=null, px=null, py=null){
+  if(!hasImage) return null;
+  const scale=Math.max(w/img.width,h/img.height)*((zoomOverride ?? +$('zoom').value)/100);
+  const dw=img.width*scale,dh=img.height*scale;
+  const dx=x+(w-dw)/2 + (px ?? +$('posX').value), dy=y+(h-dh)/2 + (py ?? +$('posY').value);
+  return {dx,dy,dw,dh};
+}
+function drawImageCover(imgObj,x,y,w,h,alpha=1,glitch=false){
+  if(!imgObj?.naturalWidth) return;
+  ctx.save();roundedRect(x,y,w,h,14);ctx.clip();ctx.globalAlpha=alpha;
+  const scale=Math.max(w/imgObj.width,h/imgObj.height)*+$('zoom').value/100;
+  const dw=imgObj.width*scale,dh=imgObj.height*scale;
+  const dx=x+(w-dw)/2 + +$('posX').value,dy=y+(h-dh)/2 + +$('posY').value;
+  ctx.drawImage(imgObj,dx,dy,dw,dh);ctx.restore();
+}
+function drawNeonEdge(x,y,w,h,emphasis=1){
+  if(!hasCutout || !hasImage) return;
+  const key=[x,y,w,h,$('zoom').value,$('posX').value,$('posY').value,$('c1').value,$('c2').value,$('edgeWidth').value,$('edgeNoise').value,$('glitchAmt').value].join('|');
+  let layer=edgeCacheCanvas;
+  if(key!==edgeCacheKey || !layer){
+    layer=document.createElement('canvas');layer.width=W;layer.height=H;
+    const lc=layer.getContext('2d');
+    const p=getImagePlacement(x,y,w,h); if(!p) return;
+    // Base silhouette alpha.
+    const mask=document.createElement('canvas');mask.width=W;mask.height=H;const mc=mask.getContext('2d');
+    mc.drawImage(cutoutImg,p.dx,p.dy,p.dw,p.dh);
+    const alpha=mc.getImageData(0,0,W,H);
+    const spread=Math.max(2,Math.round(+$('edgeWidth').value));
+    const mk=document.createElement('canvas');mk.width=W;mk.height=H;const kc=mk.getContext('2d');
+    const offsets=[[1,0],[-1,0],[0,1],[0,-1],[.7,.7],[-.7,.7],[.7,-.7],[-.7,-.7]];
+    const c1=$('c1').value,c2=$('c2').value;
+    // RGB split outline: repeated shifted silhouettes + subtract original silhouette.
+    function ring(color, ox, oy){
+      kc.clearRect(0,0,W,H);kc.globalCompositeOperation='source-over';
+      kc.fillStyle=color;
+      for(const o of offsets){kc.globalAlpha=.17;kCdraw(o[0]*spread+ox,o[1]*spread+oy)}
+      kc.globalAlpha=.95;kCdraw(0,0);kc.globalCompositeOperation='destination-out';kc.globalAlpha=1;kc.drawImage(cutoutImg,p.dx,p.dy,p.dw,p.dh);
+      lc.globalCompositeOperation='screen';lc.drawImage(kc,0,0);
+      function kCdraw(ox2,oy2){kc.save();kc.translate(ox2,oy2);kc.drawImage(cutoutImg,p.dx,p.dy,p.dw,p.dh);kc.restore()}
+    }
+    ring(c1,-spread*.55,0);ring(c2,spread*.55,0);
+    // Rebuild a true alpha edge mask from nearby silhouette offsets, then fragment it.
+    const edge=document.createElement('canvas');edge.width=W;edge.height=H;const ec=edge.getContext('2d');
+    ec.globalCompositeOperation='source-over';
+    for(const o of offsets){ec.globalAlpha=.22;ec.drawImage(cutoutImg,p.dx+o[0]*spread,p.dy+o[1]*spread,p.dw,p.dh)}
+    ec.globalAlpha=1;ec.globalCompositeOperation='destination-out';ec.drawImage(cutoutImg,p.dx,p.dy,p.dw,p.dh);
+    const ed=edge.getContext('2d').getImageData(0,0,W,H); const noise=+$('edgeNoise').value/100;
+    // Create a sparse particle/fracture field concentrated around non-transparent pixels.
+    const frag=document.createElement('canvas');frag.width=W;frag.height=H;const fc=frag.getContext('2d');
+    const step=8, cA=hexToRgb(c1), cB=hexToRgb(c2);
+    function fillRectColor(xx,yy,ww,hh,col,a){fc.fillStyle=`rgba(${col.r},${col.g},${col.b},${a})`;fc.fillRect(xx,yy,ww,hh)}
+    for(let yy=Math.max(0,Math.floor(p.dy));yy<Math.min(H,Math.ceil(p.dy+p.dh));yy+=step){
+      for(let xx=Math.max(0,Math.floor(p.dx));xx<Math.min(W,Math.ceil(p.dx+p.dw));xx+=step){
+        const ai=ed.data[(yy*W+xx)*4+3]/255;
+        if(ai>.16 && Math.random() < .08 + noise*.18){
+          const col=Math.random()<.52?cA:cB;const len=2+Math.random()*(8+22*noise), h=1+Math.random()*5;
+          fillRectColor(xx+Math.random()*5,yy+Math.random()*5,len,h,col,(.35+.5*Math.random())*ai);
+          if(Math.random()<.18+noise*.3) fillRectColor(xx-len*.45,yy+(Math.random()*8-4),len*(.2+.8*Math.random()),1,col,.75*ai);
+        }
+      }
+    }
+    lc.globalCompositeOperation='screen';lc.drawImage(edge,0,0);lc.drawImage(frag,0,0);
+    edgeCacheKey=key;edgeCacheCanvas=layer;
+  }
+  ctx.save();ctx.globalCompositeOperation='screen';ctx.globalAlpha=.92*emphasis;ctx.shadowBlur=24*emphasis;ctx.shadowColor=$('c1').value;ctx.drawImage(layer,0,0);ctx.shadowBlur=0;ctx.restore();
+}
+function drawCutoutFront(x,y,w,h){
+  if(!hasCutout || !$('showCutout').checked) return;
+  const p=getImagePlacement(x,y,w,h); if(!p) return;
+  // Subtle RGB displacement behind the subject, then the clean cutout.
+  const ga=+$('glitchAmt').value;
+  ctx.save();ctx.globalCompositeOperation='screen';ctx.globalAlpha=.28;
+  ctx.drawImage(cutoutImg,p.dx-ga*.55,p.dy,p.dw,p.dh);ctx.drawImage(cutoutImg,p.dx+ga*.55,p.dy,p.dw,p.dh);
+  ctx.restore();
+  ctx.save();ctx.drawImage(cutoutImg,p.dx,p.dy,p.dw,p.dh);ctx.restore();
+}
+async function runBackgroundRemoval(){
+  if(!hasImage){$('status').textContent='先にSSをアップロードしてください';return;}
+  const btn=$('cutoutBtn'),prog=$('cutoutProgress');btn.classList.add('loading');btn.textContent='背景を解析中…';prog.style.width='8%';$('status').textContent='IMG.LY BACKGROUND REMOVAL / loading model…';
+  try{
+    if(!bgRemovalModule){
+      bgRemovalModule=await import('https://esm.sh/@imgly/background-removal@latest');
+      prog.style.width='24%';
+    }
+    const remover=bgRemovalModule.default || bgRemovalModule.removeBackground;
+    if(typeof remover!=='function') throw new Error('removeBackground export が見つかりません');
+    const blob=await remover(img.src,{progress:(key,value)=>{if(typeof value==='number')prog.style.width=Math.max(25,Math.min(94,value*100))+'%'}});
+    if(cutoutObjectURL)URL.revokeObjectURL(cutoutObjectURL);
+    cutoutObjectURL=URL.createObjectURL(blob);
+    cutoutImg=new Image();
+    cutoutImg.onload=()=>{hasCutout=true;edgeCacheKey='';prog.style.width='100%';btn.textContent='切り抜き済み — 再実行';$('status').textContent='BACKGROUND REMOVED — ネオンフチを適用中';render()};
+    cutoutImg.onerror=()=>{throw new Error('切り抜き画像の読み込みに失敗しました')};
+    cutoutImg.src=cutoutObjectURL;
+  }catch(err){console.error(err);prog.style.width='0%';$('status').textContent='背景除去エラー: '+(err?.message||err);btn.textContent='人物を切り抜く';alert('img.ly background-removal の読み込み／実行に失敗しました。\n\n初回はモデルのダウンロードが必要です。ネットワークを許可した状態で再度実行してください。');}
+  finally{btn.classList.remove('loading');if(!hasCutout)btn.textContent='人物を切り抜く';}
+}
+function drawImageBox(x,y,w,h,opts={cover:true,alpha:1,glitch:false}){
+  ctx.save();roundedRect(x,y,w,h,14);ctx.clip();
+  ctx.globalAlpha=opts.alpha ?? 1;
+  if(!hasImage){
+    ctx.fillStyle='#0d1124';ctx.fillRect(x,y,w,h);
+    for(let i=0;i<8;i++)glowLine([[x+40+i*30,y+h-70-i*20],[x+130+i*90,y+80+i*15],[x+w-50,y+150+i*40]],i%2?$('c2').value:$('c1').value,3)
+    text('UPLOAD SS',x+w/2,y+h/2,30,800,'#6d7b9f','center');
+    ctx.restore();return;
+  }
+  const p=getImagePlacement(x,y,w,h); if(!p){ctx.restore();return;}
+  const {dx,dy,dw,dh}=p;
+  if(opts.glitch){
+    ctx.globalAlpha=.42;ctx.drawImage(img,dx-13,dy,dw,dh);ctx.globalCompositeOperation='screen';
+    ctx.globalAlpha=.36;ctx.drawImage(img,dx+15,dy,dw,dh);ctx.globalCompositeOperation='source-over';
+  }
+  ctx.globalAlpha=opts.alpha ?? 1;ctx.drawImage(img,dx,dy,dw,dh);
+  ctx.restore();
+}
+function cornerMarks(x,y,w,h){
+  const c1=$('c1').value,c2=$('c2').value;
+  glowLine([[x+28,y+70],[x+28,y+28],[x+70,y+28]],c1,3);
+  glowLine([[x+w-70,y+h-28],[x+w-28,y+h-28],[x+w-28,y+h-70]],c2,3);
+}
+function footer(){
+  text('© SQUARE ENIX',W-44,H-28,15,500,'#9eabc8','right');
+}
+function header(no,title,sub){
+  text(`${no}. ${title}`,46,54,25,850,'#f3f8ff');text(sub,46,88,14,500,'#90a0c4');
+  line(46,112,W-46,112,$('c1').value,1.5,.7);
+}
+function badge(x,y,txt,col){
+  panel(x,y,145,40,hexA(col,.75),'rgba(8,12,26,.82)',20); text(txt,x+72,y+20,13,800,col,'center')
+}
+function dataBlock(x,y,items){
+  items.forEach((it,i)=>{text(it[0],x,y+i*34,12,600,'#8190b1');text(it[1],x+128,y+i*34,17,700,'#eaf1ff')})
+}
+function trace(){
+  header('01','NEON TRACE','CHARACTER OUTLINE / INFORMATION CONNECTOR');
+  panel(38,132,1124,1490,'rgba(64,89,130,.72)','rgba(5,8,18,.48)',16);
+  const ix=108,iy=184,iw=760,ih=1120;
+  drawImageBox(ix,iy,iw,ih,{glitch:false});
+  drawNeonEdge(ix,iy,iw,ih,1.0);
+  drawCutoutFront(ix,iy,iw,ih);
+  // pseudo body trace lines
+  const c1=$('c1').value,c2=$('c2').value;
+  const traces=[
+    [[130,1180],[190,1080],[255,960],[310,800],[340,600],[410,420],[520,320],[660,280],[810,250]],
+    [[155,1260],[230,1268],[310,1300],[440,1320],[590,1300],[730,1260],[820,1180]],
+    [[510,210],[620,170],[760,180],[880,220],[920,300]]
+  ];
+  traces.forEach((p,i)=>glowLine(p,i===1?c2:c1,5));
+  panel(900,184,230,260,hexA(c1,.65),'rgba(10,14,30,.82)');
+  text('CHARACTER',920,210,11,800,c1);text($('name').value,920,252,34,850);text(`${$('race').value} / Lv.${$('level').value}`,920,288,15,500,'#afbedb');text($('job').value,920,320,18,700,c2);text($('world').value,920,352,13,500,'#8392b1');
+  panel(900,468,230,260,hexA(c2,.65),'rgba(10,14,30,.82)');
+  text('STYLE',920,494,11,800,c2);wrap($('style').value,920,532,190,18,26,'#edf4ff');
+  panel(900,756,230,180,hexA(c1,.65),'rgba(10,14,30,.82)');
+  text('SOCIAL',920,782,11,800,c1);text($('fc').value,920,824,18,700);text('BATTLE',920,872,11,800,c2);text($('job').value,920,910,16,700);
+  text($('tagline').value,108,1390,28,650,c2,'left','Georgia');
+  text('TRACE SIGNAL / ACTIVE',108,1450,14,700,'#8fa0c1'); text('VISUAL DNA LINKED',108,1480,14,600,'#667798');
+  cornerMarks(38,132,1124,1490);footer();
+}
+function orbit(){
+  header('04','NEON ORBIT','CHARACTER DATA / RADIAL RELATIONSHIP');
+  panel(38,132,1124,1490,'rgba(64,89,130,.72)','rgba(5,8,18,.5)',16);
+  const cx=600,cy=650;
+  for(let r=175;r<=440;r+=55){
+    ctx.save();ctx.strokeStyle=r%110===65?hexA($('c2').value,.32):hexA($('c1').value,.25);ctx.lineWidth=2;ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.stroke();ctx.restore()
+  }
+  for(let a=0;a<Math.PI*2;a+=Math.PI/3) line(cx+70*Math.cos(a),cy+70*Math.sin(a),cx+440*Math.cos(a),cy+440*Math.sin(a),$('c1').value,1,.25);
+  drawImageBox(cx-220,cy-220,440,440,{});
+  drawNeonEdge(cx-220,cy-220,440,440,.72);
+  drawCutoutFront(cx-220,cy-220,440,440);
+  text($('name').value,cx,cy+250,31,850,'#ffffff','center');
+  text(`${$('race').value}  ·  Lv.${$('level').value}`,cx,cy+282,15,550,'#99abd0','center');
+  const nodes=[
+    [cx,cy-440,'WORLD',$('world').value,$('c1').value],
+    [cx+382,cy-210,'STYLE','Elegant / Cool',$('c2').value],
+    [cx+382,cy+235,'BATTLE',$('job').value,$('c1').value],
+    [cx,cy+440,'JOB',$('job').value,$('c2').value],
+    [cx-382,cy+235,'SOCIAL',$('fc').value,$('c1').value],
+    [cx-382,cy-210,'GEAR','Weapon / Armor',$('c2').value]
+  ];
+  nodes.forEach(n=>{ctx.save();ctx.shadowBlur=24;ctx.shadowColor=n[4];ctx.fillStyle='#0b1022';ctx.strokeStyle=n[4];ctx.lineWidth=3;ctx.beginPath();ctx.arc(n[0],n[1],48,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.restore();text(n[2],n[0],n[1]-70,13,850,n[4],'center');text(n[3],n[0],n[1]+70,15,650,'#e8f0ff','center')});
+  panel(70,1120,500,390,hexA($('c1').value,.45),'rgba(8,12,25,.7)');text('BASIC DATA',94,1152,13,800,$('c1').value);dataBlock(94,1200,[['RACE',$('race').value],['JOB',$('job').value],['LEVEL',$('level').value],['WORLD',$('world').value],['FC',$('fc').value]]);
+  panel(600,1120,560,390,hexA($('c2').value,.45),'rgba(8,12,25,.7)');text('STYLE / PERSONALITY',624,1152,13,800,$('c2').value);wrap($('style').value,624,1200,500,22,30);text('RADIAL SIGNAL',624,1376,11,800,'#8190b1');bar(624,1410,480,.8,$('c1').value);bar(624,1456,420,.62,$('c2').value);footer()
+}
+function glitch(){
+  header('05','NEON GLITCH PORTRAIT','RECOMPOSED PORTRAIT / SIGNAL ERROR');
+  panel(38,132,1124,1490,'rgba(64,89,130,.72)','rgba(5,8,18,.5)',16);
+  const ix=80,iy=170,iw=820,ih=1140;
+  drawImageBox(ix,iy,iw,ih,{glitch:true});
+  drawNeonEdge(ix,iy,iw,ih,1.25);
+  drawCutoutFront(ix,iy,iw,ih);
+  const c1=$('c1').value,c2=$('c2').value;
+  for(let i=0;i<24;i++){
+    const y=190+i*39+Math.sin(i*2)*17, x=90+((i*71)%710);
+    const ww=50+((i*53)%250);
+    ctx.save();ctx.globalAlpha=.25+.25*(i%3===0);ctx.fillStyle=i%2?c1:c2;ctx.fillRect(x,y,ww,3+(i%3));ctx.restore()
+  }
+  for(let i=0;i<7;i++){
+    const y=220+i*125; line(80,y,900,y,i%2?c2:c1,1.5,.5)
+  }
+  panel(930,170,200,720,hexA(c1,.65),'rgba(8,12,25,.82)');
+  text($('name').value,950,206,28,850);text('FFXIV / SIGNAL',950,244,11,700,c1);
+  const crops=['FACE','HAIR','EYE','GEAR','WEAPON']; crops.forEach((lab,i)=>{text(lab,950,300+i*110,11,800,i%2?c2:c1);drawImageBox(950,320+i*110,150,70,{glitch:false,alpha:.9})});
+  panel(80,1360,1050,150,hexA(c2,.6),'rgba(8,12,25,.84)');
+  text($('tagline').value,105,1406,27,650,c2,'left','Georgia');text(`${$('job').value}  ·  Lv.${$('level').value}  ·  ${$('world').value}`,105,1460,14,650,'#a8b4cc');
+  text('COLOR PALETTE',930,940,10,800,c1);for(let i=0;i<6;i++){ctx.fillStyle=i%2?c2:c1;ctx.fillRect(930+i*32,960,24,24)}
+  text('ANALYSIS',930,1020,10,800,c2);[['FACE',.92],['GEAR',.78],['WEAPON',.85],['BACKGROUND',.64]].forEach((v,i)=>{text(v[0],930,1055+i*52,11,600,'#91a0c0');bar(1010,1048+i*52,95,v[1],i%2?c2:c1)});
+  cornerMarks(38,132,1124,1490);footer()
+}
+function cutaway(){
+  header('07','NEON CUTAWAY','CHARACTER SPECIMEN / VISUAL BREAKDOWN');
+  panel(38,132,1124,1490,'rgba(64,89,130,.72)','rgba(5,8,18,.5)',16);
+  text($('name').value,75,186,42,850);text(`${$('race').value} · ${$('job').value} · ${$('world').value}`,75,228,15,600,'#8fa0c2');
+  // main portrait
+  drawImageBox(60,280,500,650,{});
+  drawNeonEdge(60,280,500,650,1.0);
+  drawCutoutFront(60,280,500,650);
+  // crop boxes
+  const crops=[['FACE',585,280],['HAIR',840,280],['EYE',585,510],['EAR',840,510],['GEAR',585,740],['WEAPON',840,740]];
+  crops.forEach((c,i)=>{
+    text(c[0],c[1],c[2]-18,11,850,i%2?$('c2').value:$('c1').value);
+    drawImageBox(c[1],c[2],200,170,{glitch:i===4});
+    glowLine([[560+(i%2)*30, c[2]+80],[c[1]-15,c[2]+80]],i%2?$('c2').value:$('c1').value,3);
+  });
+  panel(60,980,1030,470,hexA($('c1').value,.5),'rgba(8,12,25,.74)');
+  text('CHARACTER DATA',88,1020,13,800,$('c1').value);dataBlock(88,1070,[['RACE',$('race').value],['JOB',$('job').value],['LEVEL',$('level').value],['WORLD',$('world').value],['FC',$('fc').value]]);
+  text('STYLE',510,1020,13,800,$('c2').value);wrap($('style').value,510,1062,450,20,30);
+  text('BATTLE',510,1180,13,800,$('c1').value);bar(510,1220,420,.86,$('c1').value);bar(510,1260,390,.72,$('c2').value);bar(510,1300,350,.63,$('c1').value);
+  text('VISUAL DNA',510,1360,13,800,$('c2').value);
+  for(let i=0;i<6;i++){ctx.fillStyle=i%2?$('c2').value:$('c1').value;ctx.globalAlpha=.45+.08*(i%4);ctx.fillRect(510+i*48,1385,35,35)}ctx.globalAlpha=1;
+  cornerMarks(38,132,1124,1490);footer()
+}
+function bar(x,y,w,p,col){ctx.save();ctx.fillStyle='rgba(50,61,90,.45)';ctx.fillRect(x,y,w,10);ctx.fillStyle=col;ctx.shadowBlur=13;ctx.shadowColor=col;ctx.fillRect(x,y,w*p,10);ctx.restore()}
+function wrap(str,x,y,w,size=20,step=28,color='#edf4ff'){
+  const words=str.split(/\s+/);let lineStr='',yy=y;
+  ctx.save();ctx.font=`600 ${size}px Inter`;ctx.fillStyle=color;
+  for(const word of words){const test=lineStr?lineStr+' '+word:word;if(ctx.measureText(test).width>w){ctx.fillText(lineStr,x,yy);yy+=step;lineStr=word}else lineStr=test}
+  if(lineStr)ctx.fillText(lineStr,x,yy);ctx.restore()
+}
+function render(){bg(); if(mode==='trace')trace(); else if(mode==='orbit')orbit(); else if(mode==='glitch')glitch(); else cutaway();}
+function download(name,blob){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000)}
+function exportPNG(){
+  canvas.toBlob(blob=>download(`ffxiv-neon-${mode}-${($('name').value||'character').replace(/[^\w\-]+/g,'_')}.png`,blob),'image/png');
+}
+updateRange();render();
+</script>
+</body>
+</html>
