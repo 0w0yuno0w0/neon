@@ -65,6 +65,7 @@ background-size:28px 28px;border:1px solid #151c37;border-radius:16px;padding:20
     <section>
       <h3>2. BACKGROUND REMOVAL / IMG.LY</h3>
       <button id="cutoutBtn" class="primary cutoutBtn" onclick="runBackgroundRemoval()">人物を切り抜く</button>
+      <button id="diagBtn" class="smallbtn" onclick="testImglyConnection()" style="width:100%;margin-top:7px">img.ly 読み込みテスト</button>
       <div class="progress"><i id="cutoutProgress"></i></div>
       <label>NEON EDGE</label>
       <div class="row">
@@ -74,6 +75,7 @@ background-size:28px 28px;border:1px solid #151c37;border-radius:16px;padding:20
       <label>GLITCH OFFSET</label><input id="glitchAmt" type="range" min="0" max="40" value="16">
       <label class="checkline"><input id="showCutout" type="checkbox" checked> 切り抜きキャラを前面表示</label>
       <div class="tiny" style="margin-top:8px">5番のように、人物の輪郭をシアン／マゼンタの発光フチへ変換し、横方向の粒・断片・RGBずれを加えます。</div>
+      <div id="diag" class="tiny" style="margin-top:8px;color:#9fb1d4;white-space:pre-wrap">IMG.LY: 未実行</div>
       <div class="license">Background removal: img.ly @imgly/background-removal (AGPL-3.0). ブラウザ実行時にCDNから読み込みます。</div>
     </section>
 
@@ -147,7 +149,7 @@ const $ = id => document.getElementById(id);
 const canvas = $('card'), ctx = canvas.getContext('2d');
 const W = canvas.width, H = canvas.height;
 let img = new Image(), hasImage=false, mode='trace';
-let cutoutImg = new Image(), hasCutout=false, cutoutObjectURL=null, bgRemovalModule=null;
+let cutoutImg = new Image(), hasCutout=false, cutoutObjectURL=null, bgRemovalModule=null, bgRemovalVersion='1.4.5';
 let edgeCacheKey='', edgeCacheCanvas=null;
 
 const data = {};
@@ -227,86 +229,126 @@ function drawImageCover(imgObj,x,y,w,h,alpha=1,glitch=false){
   const dx=x+(w-dw)/2 + +$('posX').value,dy=y+(h-dh)/2 + +$('posY').value;
   ctx.drawImage(imgObj,dx,dy,dw,dh);ctx.restore();
 }
+function tintImage(source, w, h, color, alpha=1){
+  const c=document.createElement('canvas');c.width=w;c.height=h;const g=c.getContext('2d');
+  g.clearRect(0,0,w,h);g.globalAlpha=alpha;g.drawImage(source,0,0,w,h);
+  g.globalCompositeOperation='source-in';g.fillStyle=color;g.fillRect(0,0,w,h);
+  return c;
+}
+function getEdgeLayer(p, spread, c1, c2, noiseAmt, glitchAmt){
+  const layer=document.createElement('canvas');layer.width=W;layer.height=H;const lc=layer.getContext('2d');
+  const offsets=[[1,0],[-1,0],[0,1],[0,-1],[.7,.7],[-.7,.7],[.7,-.7],[-.7,-.7]];
+
+  function makeRing(color, shiftX){
+    const ring=document.createElement('canvas');ring.width=W;ring.height=H;const rc=ring.getContext('2d');
+    rc.clearRect(0,0,W,H);
+    const tint=tintImage(cutoutImg,W,H,color,.96);
+    for(const o of offsets){ rc.globalAlpha=.15; rc.drawImage(tint,p.dx+o[0]*spread+shiftX,p.dy+o[1]*spread,p.dw,p.dh); }
+    rc.globalAlpha=1; rc.globalCompositeOperation='destination-out'; rc.drawImage(cutoutImg,p.dx,p.dy,p.dw,p.dh);
+    lc.save();lc.globalCompositeOperation='screen';lc.shadowBlur=22;lc.shadowColor=color;lc.drawImage(ring,0,0);lc.restore();
+  }
+  // Strong opposing RGB rims: cyan to the left, magenta to the right.
+  makeRing(c1,-spread*.75); makeRing(c2,spread*.75);
+
+  // Clean outer edge, colorised and then broken into fragments/noise.
+  const edge=document.createElement('canvas');edge.width=W;edge.height=H;const ec=edge.getContext('2d');
+  for(const o of offsets){ec.globalAlpha=.20;ec.drawImage(cutoutImg,p.dx+o[0]*spread,p.dy+o[1]*spread,p.dw,p.dh)}
+  ec.globalAlpha=1;ec.globalCompositeOperation='destination-out';ec.drawImage(cutoutImg,p.dx,p.dy,p.dw,p.dh);
+  const ed=ec.getImageData(0,0,W,H).data;
+  const frag=document.createElement('canvas');frag.width=W;frag.height=H;const fc=frag.getContext('2d');
+  const n=+$('edgeNoise').value/100, ga=+$('glitchAmt').value;
+  const cr1=hexToRgb(c1),cr2=hexToRgb(c2);
+  let seed=2166136261;
+  const rand=()=>{ seed^=seed<<13;seed^=seed>>>17;seed^=seed<<5; return ((seed>>>0)%100000)/100000; };
+  const minX=Math.max(0,Math.floor(p.dx-spread*2)), maxX=Math.min(W,Math.ceil(p.dx+p.dw+spread*2));
+  const minY=Math.max(0,Math.floor(p.dy-spread*2)), maxY=Math.min(H,Math.ceil(p.dy+p.dh+spread*2));
+  const samples=Math.min(4200,Math.max(900,Math.round((p.dw*p.dh)/9000)));
+  for(let i=0;i<samples;i++){
+    const xx=Math.floor(minX+rand()*(maxX-minX));
+    const yy=Math.floor(minY+rand()*(maxY-minY));
+    const ai=ed[(yy*W+xx)*4+3]/255;
+    if(ai<.05 || rand()>(.10+n*.55)) continue;
+    const col=rand()<.5?cr1:cr2;
+    const len=3+rand()*(5+ga*.9)*(0.7+n);
+    const hh=1+Math.floor(rand()*(1+3*n));
+    const off=(rand()-.5)*ga*1.2;
+    fc.fillStyle=`rgba(${col.r},${col.g},${col.b},${(.28+.62*rand())*ai})`;
+    fc.fillRect(xx+off,yy,len,hh);
+    if(rand()<.32+n*.4){ fc.fillRect(xx+off-len*(.35+rand()),yy+Math.round((rand()-.5)*12),len*(.25+rand()),1); }
+    if(rand()<.12+n*.25){ fc.fillRect(xx+off-len*(.8+rand()),yy+hh+2,1+rand()*2,1,col); }
+  }
+  lc.save();lc.globalCompositeOperation='screen';lc.shadowBlur=14;lc.shadowColor=c1;lc.drawImage(edge,0,0);lc.shadowBlur=20;lc.shadowColor=c2;lc.drawImage(frag,0,0);lc.restore();
+  return layer;
+}
 function drawNeonEdge(x,y,w,h,emphasis=1){
   if(!hasCutout || !hasImage) return;
   const key=[x,y,w,h,$('zoom').value,$('posX').value,$('posY').value,$('c1').value,$('c2').value,$('edgeWidth').value,$('edgeNoise').value,$('glitchAmt').value].join('|');
-  let layer=edgeCacheCanvas;
-  if(key!==edgeCacheKey || !layer){
-    layer=document.createElement('canvas');layer.width=W;layer.height=H;
-    const lc=layer.getContext('2d');
+  if(key!==edgeCacheKey || !edgeCacheCanvas){
     const p=getImagePlacement(x,y,w,h); if(!p) return;
-    // Base silhouette alpha.
-    const mask=document.createElement('canvas');mask.width=W;mask.height=H;const mc=mask.getContext('2d');
-    mc.drawImage(cutoutImg,p.dx,p.dy,p.dw,p.dh);
-    const alpha=mc.getImageData(0,0,W,H);
-    const spread=Math.max(2,Math.round(+$('edgeWidth').value));
-    const mk=document.createElement('canvas');mk.width=W;mk.height=H;const kc=mk.getContext('2d');
-    const offsets=[[1,0],[-1,0],[0,1],[0,-1],[.7,.7],[-.7,.7],[.7,-.7],[-.7,-.7]];
-    const c1=$('c1').value,c2=$('c2').value;
-    // RGB split outline: repeated shifted silhouettes + subtract original silhouette.
-    function ring(color, ox, oy){
-      kc.clearRect(0,0,W,H);kc.globalCompositeOperation='source-over';
-      kc.fillStyle=color;
-      for(const o of offsets){kc.globalAlpha=.17;kCdraw(o[0]*spread+ox,o[1]*spread+oy)}
-      kc.globalAlpha=.95;kCdraw(0,0);kc.globalCompositeOperation='destination-out';kc.globalAlpha=1;kc.drawImage(cutoutImg,p.dx,p.dy,p.dw,p.dh);
-      lc.globalCompositeOperation='screen';lc.drawImage(kc,0,0);
-      function kCdraw(ox2,oy2){kc.save();kc.translate(ox2,oy2);kc.drawImage(cutoutImg,p.dx,p.dy,p.dw,p.dh);kc.restore()}
-    }
-    ring(c1,-spread*.55,0);ring(c2,spread*.55,0);
-    // Rebuild a true alpha edge mask from nearby silhouette offsets, then fragment it.
-    const edge=document.createElement('canvas');edge.width=W;edge.height=H;const ec=edge.getContext('2d');
-    ec.globalCompositeOperation='source-over';
-    for(const o of offsets){ec.globalAlpha=.22;ec.drawImage(cutoutImg,p.dx+o[0]*spread,p.dy+o[1]*spread,p.dw,p.dh)}
-    ec.globalAlpha=1;ec.globalCompositeOperation='destination-out';ec.drawImage(cutoutImg,p.dx,p.dy,p.dw,p.dh);
-    const ed=edge.getContext('2d').getImageData(0,0,W,H); const noise=+$('edgeNoise').value/100;
-    // Create a sparse particle/fracture field concentrated around non-transparent pixels.
-    const frag=document.createElement('canvas');frag.width=W;frag.height=H;const fc=frag.getContext('2d');
-    const step=8, cA=hexToRgb(c1), cB=hexToRgb(c2);
-    function fillRectColor(xx,yy,ww,hh,col,a){fc.fillStyle=`rgba(${col.r},${col.g},${col.b},${a})`;fc.fillRect(xx,yy,ww,hh)}
-    for(let yy=Math.max(0,Math.floor(p.dy));yy<Math.min(H,Math.ceil(p.dy+p.dh));yy+=step){
-      for(let xx=Math.max(0,Math.floor(p.dx));xx<Math.min(W,Math.ceil(p.dx+p.dw));xx+=step){
-        const ai=ed.data[(yy*W+xx)*4+3]/255;
-        if(ai>.16 && Math.random() < .08 + noise*.18){
-          const col=Math.random()<.52?cA:cB;const len=2+Math.random()*(8+22*noise), h=1+Math.random()*5;
-          fillRectColor(xx+Math.random()*5,yy+Math.random()*5,len,h,col,(.35+.5*Math.random())*ai);
-          if(Math.random()<.18+noise*.3) fillRectColor(xx-len*.45,yy+(Math.random()*8-4),len*(.2+.8*Math.random()),1,col,.75*ai);
-        }
-      }
-    }
-    lc.globalCompositeOperation='screen';lc.drawImage(edge,0,0);lc.drawImage(frag,0,0);
-    edgeCacheKey=key;edgeCacheCanvas=layer;
+    edgeCacheCanvas=getEdgeLayer(p,Math.max(2,Math.round(+$('edgeWidth').value)),$('c1').value,$('c2').value,+$('edgeNoise').value,+$('glitchAmt').value);
+    edgeCacheKey=key;
   }
-  ctx.save();ctx.globalCompositeOperation='screen';ctx.globalAlpha=.92*emphasis;ctx.shadowBlur=24*emphasis;ctx.shadowColor=$('c1').value;ctx.drawImage(layer,0,0);ctx.shadowBlur=0;ctx.restore();
+  ctx.save();ctx.globalCompositeOperation='screen';ctx.globalAlpha=.98*emphasis;ctx.drawImage(edgeCacheCanvas,0,0);ctx.restore();
 }
 function drawCutoutFront(x,y,w,h){
   if(!hasCutout || !$('showCutout').checked) return;
   const p=getImagePlacement(x,y,w,h); if(!p) return;
-  // Subtle RGB displacement behind the subject, then the clean cutout.
   const ga=+$('glitchAmt').value;
-  ctx.save();ctx.globalCompositeOperation='screen';ctx.globalAlpha=.28;
-  ctx.drawImage(cutoutImg,p.dx-ga*.55,p.dy,p.dw,p.dh);ctx.drawImage(cutoutImg,p.dx+ga*.55,p.dy,p.dw,p.dh);
+  // Actual coloured RGB ghosts, not just duplicated original pixels.
+  const cyan=tintImage(cutoutImg,cutoutImg.naturalWidth,cutoutImg.naturalHeight,$('c1').value,.78);
+  const mag=tintImage(cutoutImg,cutoutImg.naturalWidth,cutoutImg.naturalHeight,$('c2').value,.78);
+  ctx.save();ctx.globalCompositeOperation='screen';ctx.globalAlpha=.9;
+  ctx.shadowBlur=18;ctx.shadowColor=$('c1').value;ctx.drawImage(cyan,p.dx-ga,p.dy,p.dw,p.dh);
+  ctx.shadowColor=$('c2').value;ctx.drawImage(mag,p.dx+ga,p.dy,p.dw,p.dh);
   ctx.restore();
   ctx.save();ctx.drawImage(cutoutImg,p.dx,p.dy,p.dw,p.dh);ctx.restore();
 }
+async function testImglyConnection(){
+  const diag=$('diag'), btn=$('diagBtn');
+  btn.disabled=true;diag.textContent='IMG.LY: CDNモジュールを読み込み中…';
+  try{
+    const mod=await import(`https://cdn.jsdelivr.net/npm/@imgly/background-removal@${bgRemovalVersion}/+esm`);
+    bgRemovalModule=mod;
+    const remover=mod.default || mod.removeBackground;
+    if(typeof remover!=='function') throw new Error('removeBackground export が見つかりません');
+    diag.textContent=`IMG.LY: OK / v${bgRemovalVersion}\nremoveBackground: OK\nmodel data: 実行時に取得`;
+    $('status').textContent='IMG.LY MODULE READY';
+  }catch(err){
+    console.error(err);diag.textContent=`IMG.LY: ERROR\n${err?.name||'Error'}: ${err?.message||err}`;$('status').textContent='IMG.LY 読み込みエラー — 詳細は左パネル';
+  }finally{btn.disabled=false}
+}
 async function runBackgroundRemoval(){
   if(!hasImage){$('status').textContent='先にSSをアップロードしてください';return;}
-  const btn=$('cutoutBtn'),prog=$('cutoutProgress');btn.classList.add('loading');btn.textContent='背景を解析中…';prog.style.width='8%';$('status').textContent='IMG.LY BACKGROUND REMOVAL / loading model…';
+  const btn=$('cutoutBtn'),prog=$('cutoutProgress'),diag=$('diag');
+  btn.classList.add('loading');btn.textContent='背景を解析中…';prog.style.width='5%';$('status').textContent='IMG.LY / モデル準備中…';
   try{
     if(!bgRemovalModule){
-      bgRemovalModule=await import('https://esm.sh/@imgly/background-removal@latest');
-      prog.style.width='24%';
+      diag.textContent='IMG.LY: CDNモジュールを読み込み中…';
+      bgRemovalModule=await import(`https://cdn.jsdelivr.net/npm/@imgly/background-removal@${bgRemovalVersion}/+esm`);
+      prog.style.width='18%';
     }
     const remover=bgRemovalModule.default || bgRemovalModule.removeBackground;
     if(typeof remover!=='function') throw new Error('removeBackground export が見つかりません');
-    const blob=await remover(img.src,{progress:(key,value)=>{if(typeof value==='number')prog.style.width=Math.max(25,Math.min(94,value*100))+'%'}});
+    diag.textContent=`IMG.LY: v${bgRemovalVersion} / モデルを取得・実行中…`;
+    const blob=await remover(img.src,{
+      publicPath:`https://staticimgly.com/@imgly/background-removal-data/${bgRemovalVersion}/dist/`,
+      output:{format:'image/png',type:'foreground'},
+      progress:(key,value)=>{
+        if(typeof value==='number'){
+          const pct=Math.max(18,Math.min(96,value*100));prog.style.width=pct+'%';diag.textContent=`IMG.LY: ${String(key||'processing')} — ${Math.round(value*100)}%`;
+        }
+      }
+    });
+    if(!(blob instanceof Blob)) throw new Error('背景除去結果がBlobではありません');
     if(cutoutObjectURL)URL.revokeObjectURL(cutoutObjectURL);
-    cutoutObjectURL=URL.createObjectURL(blob);
-    cutoutImg=new Image();
-    cutoutImg.onload=()=>{hasCutout=true;edgeCacheKey='';prog.style.width='100%';btn.textContent='切り抜き済み — 再実行';$('status').textContent='BACKGROUND REMOVED — ネオンフチを適用中';render()};
-    cutoutImg.onerror=()=>{throw new Error('切り抜き画像の読み込みに失敗しました')};
-    cutoutImg.src=cutoutObjectURL;
-  }catch(err){console.error(err);prog.style.width='0%';$('status').textContent='背景除去エラー: '+(err?.message||err);btn.textContent='人物を切り抜く';alert('img.ly background-removal の読み込み／実行に失敗しました。\n\n初回はモデルのダウンロードが必要です。ネットワークを許可した状態で再度実行してください。');}
-  finally{btn.classList.remove('loading');if(!hasCutout)btn.textContent='人物を切り抜く';}
+    cutoutObjectURL=URL.createObjectURL(blob); cutoutImg=new Image();
+    await new Promise((resolve,reject)=>{cutoutImg.onload=resolve;cutoutImg.onerror=()=>reject(new Error('切り抜きPNGを読み込めませんでした'));cutoutImg.src=cutoutObjectURL});
+    hasCutout=true;edgeCacheKey='';prog.style.width='100%';btn.textContent='切り抜き済み — 再実行';diag.textContent=`IMG.LY: COMPLETE\ncutout: ${cutoutImg.naturalWidth} × ${cutoutImg.naturalHeight}\nNEON EDGE: READY\nRGB GLITCH: READY`;$('status').textContent='BACKGROUND REMOVED — ネオンフチ／RGBズレを適用';render();
+  }catch(err){
+    console.error('IMG.LY background removal failed:',err);hasCutout=false;edgeCacheKey='';prog.style.width='0%';btn.textContent='人物を切り抜く';
+    diag.textContent=`IMG.LY: ERROR\n${err?.name||'Error'}: ${err?.message||err}\n\nGitHub Pagesでは外部CDN/モデルの読み込みが必要です。ブラウザのDevTools > Consoleにも詳細が出ます。`;
+    $('status').textContent='背景除去エラー — 左パネルの診断を確認';
+  }finally{btn.classList.remove('loading');}
 }
 function drawImageBox(x,y,w,h,opts={cover:true,alpha:1,glitch:false}){
   ctx.save();roundedRect(x,y,w,h,14);ctx.clip();
